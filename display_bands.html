@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Bands Force-Directed Graph with Removable Nodes</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    .link {
+      stroke: #999;
+      stroke-opacity: 0.6;
+    }
+    .node {
+      stroke: #fff;
+      stroke-width: 1.5px;
+      fill: steelblue;
+      cursor: pointer;
+    }
+    text {
+      font: 10px sans-serif;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <svg width="960" height="600"></svg>
+  <script>
+    const svg = d3.select("svg"),
+          width = +svg.attr("width"),
+          height = +svg.attr("height");
+
+    // Variables to hold the current nodes and links data.
+    let nodesData = [];
+    let linksData = [];
+
+    // Load the JSON data
+    d3.json("bands_network.json").then(data => {
+      // Set initial data arrays.
+      nodesData = data.bands;
+      linksData = data.connections;
+
+      // Set up the simulation using our nodesData and linksData.
+      const simulation = d3.forceSimulation(nodesData)
+        .force("link", d3.forceLink(linksData)
+          .id(d => d.id)
+          .distance(150))
+        .force("charge", d3.forceManyBody().strength(-300))
+        .force("center", d3.forceCenter(width / 2, height / 2));
+
+      // Define the links selection.
+      let link = svg.append("g")
+          .attr("class", "links")
+        .selectAll("line")
+        .data(linksData)
+        .enter().append("line")
+          .attr("class", "link")
+          .attr("stroke-width", d => Math.sqrt(d.weight) * 2);
+
+      // Define the nodes selection.
+      let node = svg.append("g")
+          .attr("class", "nodes")
+        .selectAll("circle")
+        .data(nodesData, d => d.id)
+        .enter().append("circle")
+          .attr("class", "node")
+          .attr("r", 20)
+          .on("click", (event, d) => {
+            // Toggle fill color on single click
+            d.selected = !d.selected;
+            d3.select(event.currentTarget)
+              .attr("fill", d.selected ? "orange" : "steelblue");
+          })
+          .on("dblclick", (event, d) => {
+            // On double-click, remove the node and its links.
+            removeNode(d, simulation);
+          })
+          .call(d3.drag()
+            .on("start", dragstarted)
+            .on("drag", dragged)
+            .on("end", dragended));
+
+      // Add labels (band names)
+      let label = svg.append("g")
+          .attr("class", "labels")
+        .selectAll("text")
+        .data(nodesData, d => d.id)
+        .enter().append("text")
+          .attr("dy", 4)
+          .attr("dx", -15)
+          .text(d => d.name);
+
+      // Update positions on every simulation tick
+      simulation.on("tick", () => {
+        link
+            .attr("x1", d => d.source.x)
+            .attr("y1", d => d.source.y)
+            .attr("x2", d => d.target.x)
+            .attr("y2", d => d.target.y);
+
+        node
+            .attr("cx", d => d.x)
+            .attr("cy", d => d.y);
+
+        label
+            .attr("x", d => d.x)
+            .attr("y", d => d.y);
+      });
+
+      // Helper functions for drag events
+      function dragstarted(event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+      }
+      function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+      }
+      function dragended(event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+      }
+
+      // Function to remove a node and its links, then update the simulation.
+      function removeNode(nodeToRemove, simulation) {
+        // Remove the node from nodesData.
+        nodesData = nodesData.filter(n => n.id !== nodeToRemove.id);
+        // Remove links connected to the node.
+        linksData = linksData.filter(l => l.source.id !== nodeToRemove.id && l.target.id !== nodeToRemove.id);
+
+        // Update the simulation with the new data.
+        simulation.nodes(nodesData);
+        simulation.force("link").links(linksData);
+
+        // Update the link selection.
+        link = link.data(linksData, d => d.source.id + "-" + d.target.id);
+        link.exit().remove();
+        const linkEnter = link.enter().append("line")
+          .attr("class", "link")
+          .attr("stroke-width", d => Math.sqrt(d.weight) * 2);
+        link = linkEnter.merge(link);
+
+        // Update the node selection.
+        node = node.data(nodesData, d => d.id);
+        node.exit().remove();
+        const nodeEnter = node.enter().append("circle")
+          .attr("class", "node")
+          .attr("r", 20)
+          .on("click", (event, d) => {
+            d.selected = !d.selected;
+            d3.select(event.currentTarget)
+              .attr("fill", d.selected ? "orange" : "steelblue");
+          })
+          .on("dblclick", (event, d) => {
+            removeNode(d, simulation);
+          })
+          .call(d3.drag()
+            .on("start", dragstarted)
+            .on("drag", dragged)
+            .on("end", dragended));
+        node = nodeEnter.merge(node);
+
+        // Update labels.
+        label = label.data(nodesData, d => d.id);
+        label.exit().remove();
+        const labelEnter = label.enter().append("text")
+          .attr("dy", 4)
+          .attr("dx", -15)
+          .text(d => d.name);
+        label = labelEnter.merge(label);
+
+        simulation.alpha(1).restart();
+      }
+    }).catch(error => {
+      console.error("Error loading JSON data:", error);
+    });
+  </script>
+</body>
+</html>
