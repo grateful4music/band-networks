@@ -1,7 +1,7 @@
 [project]
 name = "band-networks"
 version = "0.1.0"
-description = "Add your description here"
+description = "Bipartite graph of Seattle grunge scene bands and musicians"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
