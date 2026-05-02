@@ -19,7 +19,7 @@ from pathlib import Path
 import musicbrainzngs
 
 # TODO: replace with a real contact email — MusicBrainz TOS requires it.
-musicbrainzngs.set_useragent("GrungeMappingProject", "0.2", "your-email@example.com")
+musicbrainzngs.set_useragent("GrungeMappingProject", "0.2", "xabaj68743@inreur.com")
 
 CACHE_DIR = Path(__file__).parent / "cache"
 OUTPUT_PATH = Path(__file__).parent / "bands_network.json"
