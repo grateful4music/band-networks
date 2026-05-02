@@ -34,5 +34,5 @@ uv run fetch_popularity.py
 ## TODOs
 
 - Replace `your-email@example.com` in `build_network.py` with a real contact (MusicBrainz TOS).
-- Verify the seed-list MBIDs and add any missing canonical bands.
+- Verify all seed-list MBIDs are correct (19 canonical bands now in CANONICAL_SEEDS).
 - Consider filtering by `area` (Seattle) and active period (1988–1999) to prune crawl results.

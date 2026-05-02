@@ -40,8 +40,13 @@ CANONICAL_SEEDS = [
     ("Skin Yard",         "0119843b-4d56-47b6-ac0d-11528259bf0a"),
     ("Malfunkshun",       "71f4a8ff-97ba-47c6-a729-7f87de77c796"),
     ("Love Battery",      "20fa3e73-7ac4-4550-b9f5-6ac8c523bda5"),
-    # TODO: look up MBIDs for: Alice in Chains, Melvins, Tad, 7 Year Bitch,
-    # Hole, Foo Fighters, The Fastbacks, Gas Huffer.
+    ("Alice in Chains",   "4bd95eea-b9f6-4d70-a36c-cfea77431553"),
+    ("Melvins",           "9ccfbc94-a4f4-42f7-b6f5-d903ab77cccb"),
+    ("Tad",               "867d3fb7-9cd1-47a4-a8f0-de29cdca2004"),
+    ("7 Year Bitch",      "91d06612-5c1e-4278-b40b-b6ce22dc9bb4"),
+    ("Hole",              "1dcc8968-f2cd-441c-beda-6270f70f2863"),
+    ("The Fastbacks",     "3fe64039-d8e0-4ac2-838f-9a3bf97c4931"),
+    ("Gas Huffer",        "87bcfd2a-72c7-4c59-b2d6-873cb2e76ca6"),
 ]
 
 RATE_LIMIT_SECONDS = 1.1
