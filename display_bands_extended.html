@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <title>Bands Force-Directed Graph with Removable Nodes</title>
@@ -9,24 +10,27 @@
       stroke: #999;
       stroke-opacity: 0.6;
     }
+
     .node {
       stroke: #fff;
       stroke-width: 1.5px;
       fill: steelblue;
       cursor: pointer;
     }
+
     text {
       font: 10px sans-serif;
       pointer-events: none;
     }
   </style>
 </head>
+
 <body>
-  <svg width="960" height="600"></svg>
+  <svg width="1600" height="960"></svg>
   <script>
     const svg = d3.select("svg"),
-          width = +svg.attr("width"),
-          height = +svg.attr("height");
+      width = +svg.attr("width"),
+      height = +svg.attr("height");
 
     // Variables to hold the current nodes and links data.
     let nodesData = [];
@@ -48,61 +52,61 @@
 
       // Define the links selection.
       let link = svg.append("g")
-          .attr("class", "links")
+        .attr("class", "links")
         .selectAll("line")
         .data(linksData)
         .enter().append("line")
-          .attr("class", "link")
-          .attr("stroke-width", d => Math.sqrt(d.weight) * 2);
+        .attr("class", "link")
+        .attr("stroke-width", d => Math.sqrt(d.weight) * 2);
 
       // Define the nodes selection.
       let node = svg.append("g")
-          .attr("class", "nodes")
+        .attr("class", "nodes")
         .selectAll("circle")
         .data(nodesData, d => d.id)
         .enter().append("circle")
-          .attr("class", "node")
-          .attr("r", 20)
-          .on("click", (event, d) => {
-            // Toggle fill color on single click
-            d.selected = !d.selected;
-            d3.select(event.currentTarget)
-              .attr("fill", d.selected ? "orange" : "steelblue");
-          })
-          .on("dblclick", (event, d) => {
-            // On double-click, remove the node and its links.
-            removeNode(d, simulation);
-          })
-          .call(d3.drag()
-            .on("start", dragstarted)
-            .on("drag", dragged)
-            .on("end", dragended));
+        .attr("class", "node")
+        .attr("r", 20)
+        .on("click", (event, d) => {
+          // Toggle fill color on single click
+          d.selected = !d.selected;
+          d3.select(event.currentTarget)
+            .attr("fill", d.selected ? "orange" : "steelblue");
+        })
+        .on("dblclick", (event, d) => {
+          // On double-click, remove the node and its links.
+          removeNode(d, simulation);
+        })
+        .call(d3.drag()
+          .on("start", dragstarted)
+          .on("drag", dragged)
+          .on("end", dragended));
 
       // Add labels (band names)
       let label = svg.append("g")
-          .attr("class", "labels")
+        .attr("class", "labels")
         .selectAll("text")
         .data(nodesData, d => d.id)
         .enter().append("text")
-          .attr("dy", 4)
-          .attr("dx", -15)
-          .text(d => d.name);
+        .attr("dy", 4)
+        .attr("dx", -15)
+        .text(d => d.name);
 
       // Update positions on every simulation tick
       simulation.on("tick", () => {
         link
-            .attr("x1", d => d.source.x)
-            .attr("y1", d => d.source.y)
-            .attr("x2", d => d.target.x)
-            .attr("y2", d => d.target.y);
+          .attr("x1", d => d.source.x)
+          .attr("y1", d => d.source.y)
+          .attr("x2", d => d.target.x)
+          .attr("y2", d => d.target.y);
 
         node
-            .attr("cx", d => d.x)
-            .attr("cy", d => d.y);
+          .attr("cx", d => d.x)
+          .attr("cy", d => d.y);
 
         label
-            .attr("x", d => d.x)
-            .attr("y", d => d.y);
+          .attr("x", d => d.x)
+          .attr("y", d => d.y);
       });
 
       // Helper functions for drag events
@@ -131,6 +135,12 @@
         // Update the simulation with the new data.
         simulation.nodes(nodesData);
         simulation.force("link").links(linksData);
+
+        // Clear any fixed positions from remaining nodes.
+        nodesData.forEach(d => {
+          d.fx = null;
+          d.fy = null;
+        });
 
         // Update the link selection.
         link = link.data(linksData, d => d.source.id + "-" + d.target.id);
@@ -169,11 +179,13 @@
           .text(d => d.name);
         label = labelEnter.merge(label);
 
-        simulation.alpha(1).restart();
+        // Reheat the simulation to allow nodes to reposition.
+        simulation.alpha(0.5).restart();
       }
     }).catch(error => {
       console.error("Error loading JSON data:", error);
     });
   </script>
 </body>
+
 </html>
