@@ -1,12 +1,13 @@
 """Fetch Last.fm popularity (listeners + playcount) by MBID for every band in
-bands_network.json. Writes popularity.json: {mbid: {listeners, playcount}}.
+data/<scene>/network.json. Writes data/<scene>/popularity.json: {mbid: {listeners, playcount}}.
 
 Setup:
     1. Get a free API key: https://www.last.fm/api/account/create
     2. export LASTFM_API_KEY=<your_key>
-    3. uv run fetch_popularity.py
+    3. uv run fetch_popularity.py [--scene <name>]
 """
 
+import argparse
 import json
 import os
 import time
@@ -15,8 +16,7 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).parent
-INPUT_PATH = ROOT / "bands_network.json"
-OUTPUT_PATH = ROOT / "popularity.json"
+DATA_DIR = ROOT / "data"
 CACHE_DIR = ROOT / "cache" / "lastfm"
 
 API_KEY = os.environ.get("LASTFM_API_KEY")
@@ -48,15 +48,24 @@ def fetch(mbid: str) -> dict | None:
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Fetch Last.fm popularity for a scene's bands.")
+    parser.add_argument("--scene", default="grunge", help="Scene name (data/<name>/network.json).")
+    args = parser.parse_args()
+
     if not API_KEY:
         raise SystemExit(
             "LASTFM_API_KEY env var not set. Get a key at "
             "https://www.last.fm/api/account/create then `export LASTFM_API_KEY=...`"
         )
 
-    graph = json.loads(INPUT_PATH.read_text())
+    input_path = DATA_DIR / args.scene / "network.json"
+    output_path = DATA_DIR / args.scene / "popularity.json"
+    if not input_path.exists():
+        raise SystemExit(f"No network for scene '{args.scene}': {input_path} not found.")
+
+    graph = json.loads(input_path.read_text())
     bands = [n for n in graph["nodes"] if n["type"] == "band"]
-    print(f"Fetching popularity for {len(bands)} bands...")
+    print(f"Fetching popularity for {len(bands)} bands in scene '{args.scene}'...")
 
     out: dict[str, dict] = {}
     for i, band in enumerate(bands, 1):
@@ -74,8 +83,8 @@ def main():
         out[mbid] = {"listeners": listeners, "playcount": playcount}
         print(f"  [{i}/{len(bands)}] {band['name']}: {listeners:,} listeners")
 
-    OUTPUT_PATH.write_text(json.dumps(out, indent=2))
-    print(f"\nWrote {OUTPUT_PATH.name}: {len(out)} bands with popularity data.")
+    output_path.write_text(json.dumps(out, indent=2))
+    print(f"\nWrote {output_path}: {len(out)} bands with popularity data.")
 
 
 if __name__ == "__main__":

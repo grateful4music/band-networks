@@ -1,15 +1,20 @@
 # band-networks
 
-A bipartite graph of the Seattle grunge scene, late 1980s through the 1990s. Bands and musicians are both nodes; an edge means "this musician was a member (or supporting musician) of this band." The viz can also project to band-only edges, or filter to "connectors" — musicians who appear in two or more bands.
+A bipartite graph viz of connected music scenes. Bands and musicians are both nodes; an edge means "this musician was a member (or supporting musician) of this band." The viz can also project to band-only edges, or filter to "connectors" — musicians who appear in two or more bands.
 
-## Files
+The first scene is Seattle grunge (late 1980s through 1990s). The structure supports multiple scenes — drop a `scenes/<name>.toml` and run the build.
 
-- `build_network.py` — fetches band/musician data from MusicBrainz starting from a curated seed list of canonical Seattle grunge bands. Caches API responses to `cache/` so re-runs don't re-hit the API. Emits `bands_network.json` in bipartite form.
-- `fetch_popularity.py` — fetches Last.fm listener counts per band (by MBID) and writes `popularity.json`. Optional; the viz works without it.
-- `bands_network.json` — bipartite graph data: `{ nodes: [...], edges: [...] }`.
-- `popularity.json` — `{ <mbid>: { listeners, playcount } }`. Optional.
-- `bands_raw.json` — earlier depth-2 crawl from a Mother Love Bone seed (kept for reference; not used by the viz).
-- `index.html` — D3 force-directed viz.
+## Layout
+
+```
+scenes/<name>.toml          seed bands + metadata for a scene
+data/<name>/network.json    crawl output (bipartite graph)
+data/<name>/popularity.json optional Last.fm listener counts
+cache/                      shared MusicBrainz/Last.fm response cache
+build_network.py            crawl a scene from MusicBrainz
+fetch_popularity.py         enrich a scene with Last.fm popularity
+index.html                  D3 force-directed viz
+```
 
 ## Viz controls
 
@@ -23,16 +28,38 @@ A bipartite graph of the Seattle grunge scene, late 1980s through the 1990s. Ban
 # View
 .venv/bin/python3 -m http.server 8765   # then open http://localhost:8765
 
-# Re-fetch the network (set a real contact email in build_network.py first)
-uv run build_network.py
+# Build a scene from its TOML
+uv run build_network.py --scene grunge
+
+# Build a single-band scene by artist name (depth 2 by default)
+uv run build_network.py --band "Radiohead"
+uv run build_network.py --band "Pearl Jam" --depth 1
 
 # Optional: fetch Last.fm popularity to enable the Popularity sizing toggle
 export LASTFM_API_KEY=<your_key>        # get one at https://www.last.fm/api/account/create
-uv run fetch_popularity.py
+uv run fetch_popularity.py --scene grunge
 ```
+
+## Adding a scene
+
+Create `scenes/<name>.toml`:
+
+```toml
+name = "My Scene"
+description = "..."
+max_depth = 1
+
+seeds = [
+  { name = "Band Name", mbid = "<musicbrainz-id>" },
+  ...
+]
+```
+
+Then `uv run build_network.py --scene <name>`.
 
 ## TODOs
 
-- Replace `your-email@example.com` in `build_network.py` with a real contact (MusicBrainz TOS).
-- Verify all seed-list MBIDs are correct (19 canonical bands now in CANONICAL_SEEDS).
-- Consider filtering by `area` (Seattle) and active period (1988–1999) to prune crawl results.
+- Replace contact email in `build_network.py` with a real one (MusicBrainz TOS).
+- FastAPI backend + scene dropdown in viz (in progress).
+- Browser-driven single-band crawl with progress (in progress).
+- Consider filtering crawl results by `area` and active period.

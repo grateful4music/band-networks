@@ -82,8 +82,8 @@
     svg.call(zoom).on("dblclick.zoom", null);
 
     Promise.all([
-      d3.json("bands_network.json"),
-      d3.json("popularity.json").catch(() => null),
+      d3.json("data/grunge/network.json"),
+      d3.json("data/grunge/popularity.json").catch(() => null),
     ]).then(([data, pop]) => {
       RAW = data;
       annotateBandImportance(RAW);

@@ -1,0 +1,26 @@
+name = "Seattle Grunge"
+description = "Seattle grunge scene, late 1980s through 1990s"
+max_depth = 1
+
+# MBIDs verified against the original bands_raw.json crawl.
+seeds = [
+  { name = "Mother Love Bone",  mbid = "a5585acd-9b65-49a7-a63b-3cc4ee18846e" },
+  { name = "Pearl Jam",         mbid = "83b9cbe7-9857-49e2-ab8e-b57b01038103" },
+  { name = "Nirvana",           mbid = "5b11f4ce-a62d-471e-81fc-a69a8278c7da" },
+  { name = "Soundgarden",       mbid = "153c9281-268f-4cf3-8938-f5a4593e5df4" },
+  { name = "Mudhoney",          mbid = "e675295a-1efe-4247-aa3b-53b78d0cdffc" },
+  { name = "Green River",       mbid = "78f56916-fe11-4110-8f10-d553ddf8de7b" },
+  { name = "Temple of the Dog", mbid = "e9571c17-817f-4d34-ae3f-0c7a96f822c1" },
+  { name = "Mad Season",        mbid = "bfd085b8-0bbf-46b3-8ab9-193bca5c85e7" },
+  { name = "Screaming Trees",   mbid = "bc5e6e42-73ba-44fa-a41e-3379402f0429" },
+  { name = "Skin Yard",         mbid = "0119843b-4d56-47b6-ac0d-11528259bf0a" },
+  { name = "Malfunkshun",       mbid = "71f4a8ff-97ba-47c6-a729-7f87de77c796" },
+  { name = "Love Battery",      mbid = "20fa3e73-7ac4-4550-b9f5-6ac8c523bda5" },
+  { name = "Alice in Chains",   mbid = "4bd95eea-b9f6-4d70-a36c-cfea77431553" },
+  { name = "Melvins",           mbid = "9ccfbc94-a4f4-42f7-b6f5-d903ab77cccb" },
+  { name = "Tad",               mbid = "867d3fb7-9cd1-47a4-a8f0-de29cdca2004" },
+  { name = "7 Year Bitch",      mbid = "91d06612-5c1e-4278-b40b-b6ce22dc9bb4" },
+  { name = "Hole",              mbid = "1dcc8968-f2cd-441c-beda-6270f70f2863" },
+  { name = "The Fastbacks",     mbid = "3fe64039-d8e0-4ac2-838f-9a3bf97c4931" },
+  { name = "Gas Huffer",        mbid = "87bcfd2a-72c7-4c59-b2d6-873cb2e76ca6" },
+]

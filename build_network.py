@@ -1,6 +1,6 @@
-"""Fetch Seattle grunge band/musician data from MusicBrainz and emit a bipartite graph.
+"""Crawl band/musician data from MusicBrainz and emit a bipartite graph.
 
-Output schema (bands_network.json):
+Output schema (data/<scene>/network.json):
   {
     "nodes": [
       {"id": <mbid>, "name": <str>, "type": "band"},
@@ -12,44 +12,47 @@ Output schema (bands_network.json):
   }
 """
 
+import argparse
 import json
 import time
+import tomllib
 from collections import deque
 from pathlib import Path
+from typing import Callable
 
 import musicbrainzngs
 
-musicbrainzngs.set_useragent("GrungeMappingProject", "0.2", "xabaj68743@inreur.com")
+musicbrainzngs.set_useragent("BandNetworksProject", "0.3", "xabaj68743@inreur.com")
 
-CACHE_DIR = Path(__file__).parent / "cache"
-OUTPUT_PATH = Path(__file__).parent / "bands_network.json"
-
-# Curated seed list of canonical Seattle grunge bands.
-# MBIDs verified against the existing bands_raw.json crawl.
-# Bands without an MBID need lookup via MusicBrainz search before they can be included.
-CANONICAL_SEEDS = [
-    ("Mother Love Bone",  "a5585acd-9b65-49a7-a63b-3cc4ee18846e"),
-    ("Pearl Jam",         "83b9cbe7-9857-49e2-ab8e-b57b01038103"),
-    ("Nirvana",           "5b11f4ce-a62d-471e-81fc-a69a8278c7da"),
-    ("Soundgarden",       "153c9281-268f-4cf3-8938-f5a4593e5df4"),
-    ("Mudhoney",          "e675295a-1efe-4247-aa3b-53b78d0cdffc"),
-    ("Green River",       "78f56916-fe11-4110-8f10-d553ddf8de7b"),
-    ("Temple of the Dog", "e9571c17-817f-4d34-ae3f-0c7a96f822c1"),
-    ("Mad Season",        "bfd085b8-0bbf-46b3-8ab9-193bca5c85e7"),
-    ("Screaming Trees",   "bc5e6e42-73ba-44fa-a41e-3379402f0429"),
-    ("Skin Yard",         "0119843b-4d56-47b6-ac0d-11528259bf0a"),
-    ("Malfunkshun",       "71f4a8ff-97ba-47c6-a729-7f87de77c796"),
-    ("Love Battery",      "20fa3e73-7ac4-4550-b9f5-6ac8c523bda5"),
-    ("Alice in Chains",   "4bd95eea-b9f6-4d70-a36c-cfea77431553"),
-    ("Melvins",           "9ccfbc94-a4f4-42f7-b6f5-d903ab77cccb"),
-    ("Tad",               "867d3fb7-9cd1-47a4-a8f0-de29cdca2004"),
-    ("7 Year Bitch",      "91d06612-5c1e-4278-b40b-b6ce22dc9bb4"),
-    ("Hole",              "1dcc8968-f2cd-441c-beda-6270f70f2863"),
-    ("The Fastbacks",     "3fe64039-d8e0-4ac2-838f-9a3bf97c4931"),
-    ("Gas Huffer",        "87bcfd2a-72c7-4c59-b2d6-873cb2e76ca6"),
-]
+ROOT = Path(__file__).parent
+CACHE_DIR = ROOT / "cache"
+SCENES_DIR = ROOT / "scenes"
+DATA_DIR = ROOT / "data"
 
 RATE_LIMIT_SECONDS = 1.1
+
+
+def load_scene(name: str) -> dict:
+    path = SCENES_DIR / f"{name}.toml"
+    if not path.exists():
+        raise FileNotFoundError(f"Scene file not found: {path}")
+    return tomllib.loads(path.read_text())
+
+
+def search_artist(query: str, limit: int = 5) -> list[dict]:
+    """Search MusicBrainz for artists matching `query`. Returns top N candidates."""
+    result = musicbrainzngs.search_artists(artist=query, limit=limit)
+    return [
+        {
+            "mbid": a["id"],
+            "name": a.get("name", ""),
+            "disambiguation": a.get("disambiguation", ""),
+            "country": a.get("country", ""),
+            "type": a.get("type", ""),
+            "score": int(a.get("ext:score", 0)),
+        }
+        for a in result.get("artist-list", [])
+    ]
 
 
 def _cached_get_artist(mbid: str) -> dict | None:
@@ -95,11 +98,18 @@ def _bands_of(artist_data: dict) -> list[tuple[str, str]]:
     return out
 
 
-def build(seeds: list[tuple[str, str]], max_depth: int = 1) -> dict:
+def build(
+    seeds: list[tuple[str, str]],
+    max_depth: int = 1,
+    progress: Callable[[dict], None] | None = None,
+) -> dict:
     """Crawl from seed bands, depth-limited, and return a bipartite graph.
 
     depth 0 = seed bands only.
     depth 1 = seed bands + every band each seed-band-member ever belonged to.
+
+    `progress`, if given, is called after each band is processed with
+    {"current": str, "depth": int, "bands_done": int, "musicians_done": int}.
     """
     bands: dict[str, str] = {}
     musicians: dict[str, str] = {}
@@ -137,6 +147,14 @@ def build(seeds: list[tuple[str, str]], max_depth: int = 1) -> dict:
                     if new_band_id not in processed_bands:
                         queue.append((new_band_id, new_band_name, depth + 1))
 
+        if progress:
+            progress({
+                "current": band_name,
+                "depth": depth,
+                "bands_done": len(bands),
+                "musicians_done": len(musicians),
+            })
+
     musician_bands: dict[str, set[str]] = {}
     for e in edges:
         musician_bands.setdefault(e["source"], set()).add(e["target"])
@@ -157,12 +175,45 @@ def build(seeds: list[tuple[str, str]], max_depth: int = 1) -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
+def write_scene(scene_name: str, graph: dict) -> Path:
+    out_dir = DATA_DIR / scene_name
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "network.json"
+    out_path.write_text(json.dumps(graph, indent=2))
+    return out_path
+
+
 def main():
-    graph = build(CANONICAL_SEEDS, max_depth=1)
-    OUTPUT_PATH.write_text(json.dumps(graph, indent=2))
+    parser = argparse.ArgumentParser(description="Build a band-network graph from MusicBrainz.")
+    parser.add_argument("--scene", default="grunge", help="Scene name (file in scenes/<name>.toml).")
+    parser.add_argument(
+        "--band",
+        help="Build a single-band scene by artist name (overrides --scene seeds, looks up MBID via MusicBrainz search).",
+    )
+    parser.add_argument("--depth", type=int, help="Override max_depth for this run.")
+    args = parser.parse_args()
+
+    if args.band:
+        candidates = search_artist(args.band, limit=1)
+        if not candidates:
+            raise SystemExit(f"No MusicBrainz match for '{args.band}'.")
+        top = candidates[0]
+        scene_name = top["name"].lower().replace(" ", "_")
+        seeds = [(top["name"], top["mbid"])]
+        depth = args.depth if args.depth is not None else 2
+        print(f"Building single-band scene '{scene_name}' from {top['name']} ({top['mbid']}), depth {depth}")
+    else:
+        scene = load_scene(args.scene)
+        scene_name = args.scene
+        seeds = [(s["name"], s["mbid"]) for s in scene["seeds"]]
+        depth = args.depth if args.depth is not None else scene.get("max_depth", 1)
+        print(f"Building scene '{scene_name}' ({scene.get('name', scene_name)}) with {len(seeds)} seeds, depth {depth}")
+
+    graph = build(seeds, max_depth=depth)
+    out_path = write_scene(scene_name, graph)
     n_bands = sum(1 for n in graph["nodes"] if n["type"] == "band")
     n_mus = sum(1 for n in graph["nodes"] if n["type"] == "musician")
-    print(f"\nWrote {OUTPUT_PATH.name}: {n_bands} bands, {n_mus} musicians, {len(graph['edges'])} edges.")
+    print(f"\nWrote {out_path}: {n_bands} bands, {n_mus} musicians, {len(graph['edges'])} edges.")
 
 
 if __name__ == "__main__":
