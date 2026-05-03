@@ -14,11 +14,11 @@ Output schema (bands_network.json):
 
 import json
 import time
+from collections import deque
 from pathlib import Path
 
 import musicbrainzngs
 
-# TODO: replace with a real contact email — MusicBrainz TOS requires it.
 musicbrainzngs.set_useragent("GrungeMappingProject", "0.2", "xabaj68743@inreur.com")
 
 CACHE_DIR = Path(__file__).parent / "cache"
@@ -106,11 +106,11 @@ def build(seeds: list[tuple[str, str]], max_depth: int = 1) -> dict:
     edges: list[dict] = []
     seen_edges: set[tuple[str, str, str]] = set()
 
-    queue = [(mbid, name, 0) for name, mbid in seeds]
+    queue: deque[tuple[str, str, int]] = deque((mbid, name, 0) for name, mbid in seeds)
     processed_bands: set[str] = set()
 
     while queue:
-        band_id, band_name, depth = queue.pop(0)
+        band_id, band_name, depth = queue.popleft()
         if band_id in processed_bands:
             continue
         processed_bands.add(band_id)
@@ -137,9 +137,10 @@ def build(seeds: list[tuple[str, str]], max_depth: int = 1) -> dict:
                     if new_band_id not in processed_bands:
                         queue.append((new_band_id, new_band_name, depth + 1))
 
-    band_count_per_musician: dict[str, int] = {}
+    musician_bands: dict[str, set[str]] = {}
     for e in edges:
-        band_count_per_musician[e["source"]] = band_count_per_musician.get(e["source"], 0) + 1
+        musician_bands.setdefault(e["source"], set()).add(e["target"])
+    band_count_per_musician = {m: len(bs) for m, bs in musician_bands.items()}
 
     nodes = [
         {"id": mbid, "name": name, "type": "band"}
