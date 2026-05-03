@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "viz",
-      "runtimeExecutable": ".venv/bin/python3",
-      "runtimeArgs": ["-m", "http.server", "8765"],
+      "name": "server",
+      "runtimeExecutable": "/opt/homebrew/bin/uv",
+      "runtimeArgs": ["run", "server.py"],
       "port": 8765
     }
   ]

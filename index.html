@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Seattle Grunge Band Network</title>
+  <title>band-networks</title>
   <script src="https://d3js.org/d3.v7.min.js"></script>
   <style>
     body { margin: 0; font-family: sans-serif; background: #fafafa; }
@@ -20,6 +20,10 @@
     }
     #toolbar button.active { background: #333; color: #fff; border-color: #333; }
     #toolbar button:disabled { opacity: 0.4; cursor: not-allowed; }
+    #toolbar select {
+      padding: 5px 8px; font-size: 12px; cursor: pointer;
+      background: #fff; border: 1px solid #ccc; border-radius: 3px;
+    }
     #toolbar .stats { margin-left: auto; font-size: 12px; color: #666; }
     svg { display: block; }
     .link { stroke-opacity: 0.5; }
@@ -41,7 +45,11 @@
 </head>
 <body>
   <div id="toolbar">
-    <h1>Seattle Grunge Band Network</h1>
+    <h1 id="title">band-networks</h1>
+    <div class="group">
+      <span class="label">Scene:</span>
+      <select id="scene-select"></select>
+    </div>
     <div class="group">
       <span class="label">View:</span>
       <button data-mode="connectors" class="active">Connectors</button>
@@ -66,6 +74,8 @@
     const stats = d3.select("#stats");
 
     let RAW = null;
+    let SCENES = [];
+    let currentSceneId = null;
     let mode = "connectors";
     let sizeMode = "centrality";
     let focusedId = null;
@@ -81,10 +91,62 @@
       });
     svg.call(zoom).on("dblclick.zoom", null);
 
-    Promise.all([
-      d3.json("data/grunge/network.json"),
-      d3.json("data/grunge/popularity.json").catch(() => null),
-    ]).then(([data, pop]) => {
+    async function init() {
+      try {
+        const res = await fetch("/api/scenes");
+        SCENES = (await res.json()).scenes || [];
+      } catch (err) {
+        console.error("Failed to fetch /api/scenes", err);
+      }
+      populateSceneDropdown();
+      const initial = chooseInitialScene();
+      if (initial) await loadScene(initial.id);
+    }
+
+    function populateSceneDropdown() {
+      const sel = d3.select("#scene-select");
+      sel.selectAll("option").remove();
+      for (const s of SCENES) {
+        sel.append("option").attr("value", s.id).text(s.name);
+      }
+      sel.on("change", function () { loadScene(this.value); });
+    }
+
+    function chooseInitialScene() {
+      if (!SCENES.length) return null;
+      const want = new URLSearchParams(location.search).get("scene");
+      return (want && SCENES.find(s => s.id === want)) || SCENES[0];
+    }
+
+    async function loadScene(sceneId) {
+      currentSceneId = sceneId;
+      focusedId = null;
+
+      // Reset popularity toggle; loadScene re-enables it if popularity data exists.
+      d3.select("#size-popularity")
+        .attr("disabled", true)
+        .attr("title", "Run fetch_popularity.py to enable");
+      if (sizeMode === "popularity") {
+        sizeMode = "centrality";
+        d3.selectAll("#toolbar button[data-size]").classed("active", false);
+        d3.select('button[data-size="centrality"]').classed("active", true);
+      }
+
+      d3.select("#scene-select").property("value", sceneId);
+      const url = new URL(location.href);
+      url.searchParams.set("scene", sceneId);
+      history.replaceState(null, "", url);
+
+      const meta = SCENES.find(s => s.id === sceneId);
+      if (meta) {
+        d3.select("#title").text(meta.name);
+        document.title = `${meta.name} · band-networks`;
+      }
+
+      const [data, pop] = await Promise.all([
+        d3.json(`data/${sceneId}/network.json`),
+        d3.json(`data/${sceneId}/popularity.json`).catch(() => null),
+      ]);
       RAW = data;
       annotateBandImportance(RAW);
       if (pop) {
@@ -97,7 +159,9 @@
       }
       setupScales();
       render();
-    });
+    }
+
+    init();
 
     function annotateBandImportance(graph) {
       const musicianToBands = new Map();
