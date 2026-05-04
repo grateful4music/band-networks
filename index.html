@@ -90,6 +90,7 @@
       background: #fffbe6; border: 1px solid #ffe58f;
       border-radius: 3px; padding: 8px 10px;
     }
+    .lastfm-note { font-size: 11px; color: #2d5a2d; margin-top: 6px; }
     .error-text {
       font-size: 12px; color: #b3261e; padding: 8px 10px;
       background: #fff5f5; border: 1px solid #f5c6cb;
@@ -159,6 +160,7 @@
           <button data-depth="2">2</button>
         </div>
         <div id="depth-warning" class="warning-text"></div>
+        <div id="lastfm-note" class="lastfm-note hidden">+ Last.fm popularity will be fetched after the crawl.</div>
         <div class="modal-actions">
           <button id="back-to-search">← Back</button>
           <button id="build-btn" class="primary">Build</button>
@@ -185,6 +187,7 @@
 
     let RAW = null;
     let SCENES = [];
+    let CONFIG = { lastfm_enabled: false };
     let currentSceneId = null;
     let mode = "connectors";
     let sizeMode = "centrality";
@@ -203,12 +206,17 @@
 
     async function init() {
       try {
-        const res = await fetch("/api/scenes");
-        SCENES = (await res.json()).scenes || [];
+        const [scenesRes, configRes] = await Promise.all([
+          fetch("/api/scenes"),
+          fetch("/api/config"),
+        ]);
+        SCENES = (await scenesRes.json()).scenes || [];
+        CONFIG = await configRes.json();
       } catch (err) {
-        console.error("Failed to fetch /api/scenes", err);
+        console.error("Failed to fetch initial state", err);
       }
       populateSceneDropdown();
+      d3.select("#lastfm-note").classed("hidden", !CONFIG.lastfm_enabled);
       const initial = chooseInitialScene();
       if (initial) await loadScene(initial.id);
     }
@@ -412,6 +420,9 @@
         if (job.state === "done") {
           d3.select("#progress-detail").text("Done!");
           d3.select("#progress-spinner").classed("hidden", true);
+          if (job.popularity_warning) {
+            console.warn("Popularity fetch warning:", job.popularity_warning);
+          }
           await refreshScenes();
           closeBuildModal();
           await loadScene(job.scene_id);
@@ -423,9 +434,13 @@
         }
         if (job.progress) {
           const p = job.progress;
-          d3.select("#progress-detail").text(
-            `Processing: ${p.current} (depth ${p.depth}) — ${p.bands_done} bands, ${p.musicians_done} musicians so far`
-          );
+          let detail;
+          if (job.phase === "lastfm") {
+            detail = `Last.fm popularity: ${p.current} (${p.done}/${p.total})`;
+          } else {
+            detail = `MusicBrainz: ${p.current} (depth ${p.depth}) — ${p.bands_done} bands, ${p.musicians_done} musicians so far`;
+          }
+          d3.select("#progress-detail").text(detail);
         } else {
           d3.select("#progress-detail").text(job.state === "running" ? "Starting…" : "Queued.");
         }

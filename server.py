@@ -15,6 +15,7 @@ Run:
 from __future__ import annotations
 
 import json
+import os
 import threading
 import tomllib
 import uuid
@@ -27,6 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from build_network import build_single_band, find_existing_by_mbid, search_artist
+from fetch_popularity import fetch_popularity_for_scene
 
 ROOT = Path(__file__).parent
 DATA_DIR = ROOT / "data"
@@ -132,22 +134,44 @@ class BuildRequest(BaseModel):
 
 
 def _run_build_job(job_id: str, name: str, mbid: str, depth: int) -> None:
-    def progress(info: dict) -> None:
+    def mb_progress(info: dict) -> None:
         with JOBS_LOCK:
             JOBS[job_id].update({
                 "state": "running",
+                "phase": "musicbrainz",
+                "progress": info,
+            })
+
+    def lf_progress(info: dict) -> None:
+        with JOBS_LOCK:
+            JOBS[job_id].update({
+                "state": "running",
+                "phase": "lastfm",
                 "progress": info,
             })
 
     try:
         with JOBS_LOCK:
             JOBS[job_id]["state"] = "running"
+            JOBS[job_id]["phase"] = "musicbrainz"
             JOBS[job_id]["started_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        meta = build_single_band(name, mbid, depth=depth, progress=progress)
+        meta = build_single_band(name, mbid, depth=depth, progress=mb_progress)
+        scene_id = meta["id"]
+
+        # Phase 2: fetch popularity if a Last.fm key is configured.
+        if os.environ.get("LASTFM_API_KEY"):
+            try:
+                fetch_popularity_for_scene(scene_id, progress=lf_progress)
+            except Exception as e:
+                # Don't fail the build over popularity — record a warning.
+                with JOBS_LOCK:
+                    JOBS[job_id]["popularity_warning"] = f"{type(e).__name__}: {e}"
+
         with JOBS_LOCK:
             JOBS[job_id].update({
                 "state": "done",
-                "scene_id": meta["id"],
+                "phase": "done",
+                "scene_id": scene_id,
                 "meta": meta,
                 "finished_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             })
@@ -193,6 +217,11 @@ def build_status(job_id: str):
         if not job:
             raise HTTPException(status_code=404, detail="job not found")
         return dict(job)
+
+
+@app.get("/api/config")
+def get_config():
+    return {"lastfm_enabled": bool(os.environ.get("LASTFM_API_KEY"))}
 
 
 @app.get("/")
