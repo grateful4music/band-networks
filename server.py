@@ -45,9 +45,23 @@ app = FastAPI(title="band-networks", version="0.3")
 # In-memory job tracker. Lost on restart — fine for a personal tool.
 JOBS: dict[str, dict] = {}
 JOBS_LOCK = threading.Lock()
+MAX_JOBS = 50  # cap retained jobs; oldest finished ones get evicted
 
 # Cache MusicBrainz search results per query so rapid typing doesn't refetch.
 _SEARCH_CACHE: dict[str, list[dict]] = {}
+MAX_SEARCH_CACHE = 200
+
+
+def _evict_old_jobs() -> None:
+    """Evict the oldest finished jobs until JOBS is at or under MAX_JOBS. Called
+    while holding JOBS_LOCK. Running/queued jobs are never evicted."""
+    while len(JOBS) > MAX_JOBS:
+        for jid, job in JOBS.items():
+            if job.get("state") in ("done", "error"):
+                del JOBS[jid]
+                break
+        else:
+            return  # nothing finished to evict
 
 
 def _scene_meta(scene_id: str) -> dict | None:
@@ -127,6 +141,8 @@ def search(q: str, limit: int = 5):
         results = search_artist(q, limit=limit)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"MusicBrainz search failed: {e}")
+    if len(_SEARCH_CACHE) >= MAX_SEARCH_CACHE:
+        _SEARCH_CACHE.pop(next(iter(_SEARCH_CACHE)))  # FIFO eviction
     _SEARCH_CACHE[key] = results
     return {"results": results}
 
@@ -206,6 +222,7 @@ def build_endpoint(req: BuildRequest):
             "depth": req.depth,
             "queued_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
+        _evict_old_jobs()
     threading.Thread(
         target=_run_build_job,
         args=(job_id, req.name, req.mbid, req.depth),

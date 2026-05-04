@@ -34,7 +34,10 @@ def fetch(mbid: str) -> dict | None:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     cache_file = CACHE_DIR / f"{mbid}.json"
     if cache_file.exists():
-        return json.loads(cache_file.read_text())
+        try:
+            return json.loads(cache_file.read_text())
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"  ! corrupt Last.fm cache for {mbid} ({e}); refetching")
 
     params = urllib.parse.urlencode({
         "method": "artist.getInfo",

@@ -72,6 +72,8 @@
       display: flex; justify-content: space-between; align-items: center; gap: 8px;
     }
     #search-results li:hover { background: #f0f0f0; }
+    #search-results li.placeholder { cursor: default; }
+    #search-results li.placeholder:hover { background: transparent; }
     .result-main { flex: 1; min-width: 0; }
     .result-name { font-weight: 600; font-size: 13px; }
     .result-meta { font-size: 11px; color: #888; }
@@ -179,9 +181,9 @@
   </div>
 
   <script>
-    const width = window.innerWidth;
-    const height = window.innerHeight - 50;
-    const svg = d3.select("svg").attr("width", width).attr("height", height);
+    const svg = d3.select("svg")
+      .attr("width", window.innerWidth)
+      .attr("height", window.innerHeight - 50);
     const tooltip = d3.select("#tooltip");
     const stats = d3.select("#stats");
 
@@ -189,6 +191,12 @@
     let SCENES = [];
     let CONFIG = { lastfm_enabled: false };
     let currentSceneId = null;
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => (
+        { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+      ));
+    }
     let mode = "connectors";
     let sizeMode = "centrality";
     let focusedId = null;
@@ -265,6 +273,9 @@
         d3.json(`data/${sceneId}/network.json`),
         d3.json(`data/${sceneId}/popularity.json`).catch(() => null),
       ]);
+      // Guard against rapid switches: if a newer scene is now active, drop these results.
+      if (currentSceneId !== sceneId) return;
+
       RAW = data;
       annotateBandImportance(RAW);
       if (pop) {
@@ -282,6 +293,7 @@
     // ---- Build modal: search MusicBrainz, kick off a single-band crawl ----
     let buildState = { selected: null, depth: 1, jobId: null, pollTimer: null };
     let searchTimeout = null;
+    let latestSearchQuery = "";
 
     function openBuildModal() {
       buildState = { selected: null, depth: 1, jobId: null, pollTimer: null };
@@ -297,6 +309,8 @@
         clearTimeout(buildState.pollTimer);
         buildState.pollTimer = null;
       }
+      // Abandon any in-flight polling: pollBuild re-checks jobId after each await.
+      buildState.jobId = null;
       d3.select("#build-modal").classed("hidden", true);
     }
 
@@ -317,15 +331,19 @@
     }
 
     async function doSearch(q) {
+      latestSearchQuery = q;
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=8`);
+        if (latestSearchQuery !== q) return;  // newer query in flight
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
+        if (latestSearchQuery !== q) return;
         renderSearchResults(data.results || []);
       } catch (err) {
+        if (latestSearchQuery !== q) return;
         const list = d3.select("#search-results");
         list.selectAll("*").remove();
-        list.append("li").attr("class", "error-text").text(`Search failed: ${err.message}`);
+        list.append("li").attr("class", "placeholder error-text").text(`Search failed: ${err.message}`);
       }
     }
 
@@ -333,7 +351,10 @@
       const list = d3.select("#search-results");
       list.selectAll("*").remove();
       if (!results.length) {
-        list.append("li").style("color", "#888").style("padding", "8px 10px").text("No matches.");
+        list.append("li")
+          .attr("class", "placeholder")
+          .style("color", "#888").style("padding", "8px 10px")
+          .text("No matches.");
         return;
       }
       for (const r of results) {
@@ -412,11 +433,14 @@
     }
 
     async function pollBuild() {
-      if (!buildState.jobId) return;
+      const myJobId = buildState.jobId;
+      if (!myJobId) return;
       try {
-        const res = await fetch(`/api/build/${buildState.jobId}`);
+        const res = await fetch(`/api/build/${myJobId}`);
+        if (myJobId !== buildState.jobId) return;  // user closed modal; abandon
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const job = await res.json();
+        if (myJobId !== buildState.jobId) return;  // re-check after second await
         if (job.state === "done") {
           d3.select("#progress-detail").text("Done!");
           d3.select("#progress-spinner").classed("hidden", true);
@@ -424,6 +448,7 @@
             console.warn("Popularity fetch warning:", job.popularity_warning);
           }
           await refreshScenes();
+          if (myJobId !== buildState.jobId) return;
           closeBuildModal();
           await loadScene(job.scene_id);
           return;
@@ -446,6 +471,7 @@
         }
         buildState.pollTimer = setTimeout(pollBuild, 1000);
       } catch (err) {
+        if (myJobId !== buildState.jobId) return;  // closing also throws AbortError sometimes
         showBuildError(`Lost connection: ${err.message}`);
       }
     }
@@ -630,13 +656,15 @@
       viewG = svg.append("g").attr("class", "zoom-target");
       svg.call(zoom.transform, d3.zoomIdentity);
 
+      const w = window.innerWidth;
+      const h = window.innerHeight - 50;
       const linkDistance = mode === "bands" ? 90 : 60;
       const charge = mode === "full" ? -80 : -150;
 
       simulation = d3.forceSimulation(nodes)
         .force("link", d3.forceLink(links).id(d => d.id).distance(linkDistance))
         .force("charge", d3.forceManyBody().strength(charge))
-        .force("center", d3.forceCenter(width / 2, height / 2))
+        .force("center", d3.forceCenter(w / 2, h / 2))
         .force("collide", d3.forceCollide().radius(d => d.type === "band" ? bandRadius(d) + 4 : 6));
 
       linkSel = viewG.append("g").selectAll("line")
@@ -658,7 +686,7 @@
           if (d.type === "band" && d.popularity) {
             extra += ` <span style="color:#aaa">· ${d.popularity.toLocaleString()} listeners</span>`;
           }
-          tooltip.style("opacity", 1).html(`<b>${d.name}</b> ${extra}`);
+          tooltip.style("opacity", 1).html(`<b>${escapeHtml(d.name)}</b> ${extra}`);
         })
         .on("mousemove", event => {
           tooltip.style("left", (event.pageX + 12) + "px")

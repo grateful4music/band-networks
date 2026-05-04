@@ -84,7 +84,10 @@ def _cached_get_artist(mbid: str) -> dict | None:
     CACHE_DIR.mkdir(exist_ok=True)
     cache_file = CACHE_DIR / f"{mbid}.json"
     if cache_file.exists():
-        return json.loads(cache_file.read_text())
+        try:
+            return json.loads(cache_file.read_text())
+        except (OSError, json.JSONDecodeError) as e:
+            print(f"  ! corrupt MusicBrainz cache for {mbid} ({e}); refetching")
     try:
         result = musicbrainzngs.get_artist_by_id(mbid, includes=["artist-rels"])
     except Exception as e:
