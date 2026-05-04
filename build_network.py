@@ -14,9 +14,11 @@ Output schema (data/<scene>/network.json):
 
 import argparse
 import json
+import re
 import time
 import tomllib
 from collections import deque
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -37,6 +39,28 @@ def load_scene(name: str) -> dict:
     if not path.exists():
         raise FileNotFoundError(f"Scene file not found: {path}")
     return tomllib.loads(path.read_text())
+
+
+def slugify(name: str) -> str:
+    s = re.sub(r"[^a-zA-Z0-9]+", "_", name.lower()).strip("_")
+    return s or "scene"
+
+
+def find_existing_by_mbid(mbid: str) -> dict | None:
+    """Return the meta of a previously-built single-band scene matching mbid, or None."""
+    if not DATA_DIR.exists():
+        return None
+    for scene_dir in DATA_DIR.iterdir():
+        meta_path = scene_dir / "meta.json"
+        if not meta_path.exists():
+            continue
+        try:
+            meta = json.loads(meta_path.read_text())
+        except json.JSONDecodeError:
+            continue
+        if meta.get("kind") == "single-band" and meta.get("mbid") == mbid:
+            return meta
+    return None
 
 
 def search_artist(query: str, limit: int = 5) -> list[dict]:
@@ -175,12 +199,53 @@ def build(
     return {"nodes": nodes, "edges": edges}
 
 
-def write_scene(scene_name: str, graph: dict) -> Path:
+def write_scene(scene_name: str, graph: dict, meta: dict | None = None) -> Path:
     out_dir = DATA_DIR / scene_name
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "network.json"
     out_path.write_text(json.dumps(graph, indent=2))
+    if meta is not None:
+        (out_dir / "meta.json").write_text(json.dumps(meta, indent=2))
     return out_path
+
+
+def build_single_band(
+    name: str,
+    mbid: str,
+    depth: int = 1,
+    progress: Callable[[dict], None] | None = None,
+) -> dict:
+    """Build a single-band scene and write data/<slug>/{network,meta}.json.
+
+    If a scene with this MBID already exists, returns its meta unchanged.
+    Otherwise crawls and writes new files. Returns the scene's meta dict.
+    Slug collisions with a different MBID get an 8-char MBID suffix.
+    """
+    existing = find_existing_by_mbid(mbid)
+    if existing is not None:
+        return existing
+
+    base_slug = slugify(name)
+    scene_id = base_slug
+    candidate_dir = DATA_DIR / scene_id
+    if candidate_dir.exists():
+        scene_id = f"{base_slug}_{mbid[:8]}"
+
+    graph = build([(name, mbid)], max_depth=depth, progress=progress)
+    n_bands = sum(1 for n in graph["nodes"] if n["type"] == "band")
+    n_mus = sum(1 for n in graph["nodes"] if n["type"] == "musician")
+
+    meta = {
+        "id": scene_id,
+        "name": name,
+        "kind": "single-band",
+        "mbid": mbid,
+        "depth": depth,
+        "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "stats": {"bands": n_bands, "musicians": n_mus, "edges": len(graph["edges"])},
+    }
+    write_scene(scene_id, graph, meta=meta)
+    return meta
 
 
 def main():
@@ -198,21 +263,34 @@ def main():
         if not candidates:
             raise SystemExit(f"No MusicBrainz match for '{args.band}'.")
         top = candidates[0]
-        scene_name = top["name"].lower().replace(" ", "_")
-        seeds = [(top["name"], top["mbid"])]
-        depth = args.depth if args.depth is not None else 2
-        print(f"Building single-band scene '{scene_name}' from {top['name']} ({top['mbid']}), depth {depth}")
-    else:
-        scene = load_scene(args.scene)
-        scene_name = args.scene
-        seeds = [(s["name"], s["mbid"]) for s in scene["seeds"]]
-        depth = args.depth if args.depth is not None else scene.get("max_depth", 1)
-        print(f"Building scene '{scene_name}' ({scene.get('name', scene_name)}) with {len(seeds)} seeds, depth {depth}")
+        depth = args.depth if args.depth is not None else 1
+        print(f"Building single-band scene from {top['name']} ({top['mbid']}), depth {depth}")
+        meta = build_single_band(top["name"], top["mbid"], depth=depth)
+        scene_id = meta["id"]
+        out_path = DATA_DIR / scene_id / "network.json"
+        stats = meta["stats"]
+        print(f"\nWrote {out_path}: {stats['bands']} bands, {stats['musicians']} musicians, {stats['edges']} edges.")
+        return
+
+    scene = load_scene(args.scene)
+    scene_name = args.scene
+    seeds = [(s["name"], s["mbid"]) for s in scene["seeds"]]
+    depth = args.depth if args.depth is not None else scene.get("max_depth", 1)
+    print(f"Building scene '{scene_name}' ({scene.get('name', scene_name)}) with {len(seeds)} seeds, depth {depth}")
 
     graph = build(seeds, max_depth=depth)
-    out_path = write_scene(scene_name, graph)
     n_bands = sum(1 for n in graph["nodes"] if n["type"] == "band")
     n_mus = sum(1 for n in graph["nodes"] if n["type"] == "musician")
+    meta = {
+        "id": scene_name,
+        "name": scene.get("name", scene_name),
+        "kind": "scene",
+        "mbid": None,
+        "depth": depth,
+        "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "stats": {"bands": n_bands, "musicians": n_mus, "edges": len(graph["edges"])},
+    }
+    out_path = write_scene(scene_name, graph, meta=meta)
     print(f"\nWrote {out_path}: {n_bands} bands, {n_mus} musicians, {len(graph['edges'])} edges.")
 
 

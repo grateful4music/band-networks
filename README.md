@@ -7,38 +7,46 @@ The first scene is Seattle grunge (late 1980s through 1990s). The structure supp
 ## Layout
 
 ```
-scenes/<name>.toml          seed bands + metadata for a scene
+scenes/<name>.toml          seed bands + metadata for a TOML-defined scene
 data/<name>/network.json    crawl output (bipartite graph)
+data/<name>/meta.json       scene metadata (kind, mbid, depth, built_at, stats)
 data/<name>/popularity.json optional Last.fm listener counts
 cache/                      shared MusicBrainz/Last.fm response cache
-build_network.py            crawl a scene from MusicBrainz
+build_network.py            crawl a scene from MusicBrainz (CLI)
 fetch_popularity.py         enrich a scene with Last.fm popularity
-index.html                  D3 force-directed viz
+server.py                   FastAPI server: serves the viz + crawl API
+index.html                  D3 force-directed viz with build modal
 ```
 
 ## Viz controls
 
+- **Scene:** dropdown switches between built scenes. **+ Build new** opens a modal that searches MusicBrainz and builds a single-band network on demand. If the band has been built before, the modal shows an "already built" badge and switching is instant.
 - **View:** Connectors / Full / Band-only.
-- **Size by:** Centrality (network-derived: how many other bands a band shares members with) or Popularity (Last.fm listener count). Popularity is disabled until `popularity.json` exists.
+- **Size by:** Centrality (network-derived) or Popularity (Last.fm listeners). Popularity is disabled until `popularity.json` exists for the active scene.
 - **Click a node** to filter to its 2-hop neighborhood (1-hop in Band-only). Click again, or click empty space, to clear.
 
 ## Usage
 
 ```bash
-# View
-.venv/bin/python3 -m http.server 8765   # then open http://localhost:8765
+# Run the server (serves viz at http://localhost:8765 and the build API)
+uv run server.py
 
-# Build a scene from its TOML
+# Or use the CLI to build scenes directly:
 uv run build_network.py --scene grunge
+uv run build_network.py --band "Radiohead"          # depth 1 default
+uv run build_network.py --band "Pearl Jam" --depth 2
 
-# Build a single-band scene by artist name (depth 2 by default)
-uv run build_network.py --band "Radiohead"
-uv run build_network.py --band "Pearl Jam" --depth 1
-
-# Optional: fetch Last.fm popularity to enable the Popularity sizing toggle
-export LASTFM_API_KEY=<your_key>        # get one at https://www.last.fm/api/account/create
+# Optional: enrich with Last.fm popularity
+export LASTFM_API_KEY=<your_key>                    # https://www.last.fm/api/account/create
 uv run fetch_popularity.py --scene grunge
 ```
+
+## API
+
+- `GET  /api/scenes` — list built scenes with meta (id, name, kind, mbid, depth, stats).
+- `GET  /api/search?q=<name>&limit=5` — MusicBrainz artist search.
+- `POST /api/build` — body `{name, mbid, depth, force?}`. Returns `{status: "exists", ...}` if already built, otherwise `{status: "building", job_id}`.
+- `GET  /api/build/{job_id}` — poll a build job. State is `queued`/`running`/`done`/`error`; `progress` updates per band crawled.
 
 ## Adding a scene
 
@@ -60,6 +68,4 @@ Then `uv run build_network.py --scene <name>`.
 ## TODOs
 
 - Replace contact email in `build_network.py` with a real one (MusicBrainz TOS).
-- FastAPI backend + scene dropdown in viz (in progress).
-- Browser-driven single-band crawl with progress (in progress).
 - Consider filtering crawl results by `area` and active period.

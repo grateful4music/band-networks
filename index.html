@@ -41,6 +41,78 @@
       color: #fff; font-size: 12px; border-radius: 3px; pointer-events: none;
       opacity: 0; transition: opacity 0.15s;
     }
+
+    /* Build modal */
+    #build-modal { position: fixed; inset: 0; z-index: 100; }
+    #build-modal.hidden { display: none; }
+    .modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.4); }
+    .modal-card {
+      position: relative; max-width: 480px; width: 90vw;
+      margin: 60px auto 0; background: #fff; border-radius: 6px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2); padding: 20px 24px;
+    }
+    .modal-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 16px;
+    }
+    .modal-header h2 { margin: 0; font-size: 16px; }
+    .icon-btn {
+      background: none; border: none; cursor: pointer;
+      font-size: 24px; line-height: 1; padding: 0; color: #888;
+    }
+    .icon-btn:hover { color: #333; }
+    #search-input {
+      width: 100%; box-sizing: border-box; padding: 8px 10px;
+      font-size: 14px; border: 1px solid #ccc; border-radius: 3px;
+      margin-bottom: 12px;
+    }
+    #search-results { list-style: none; padding: 0; margin: 0; max-height: 320px; overflow-y: auto; }
+    #search-results li {
+      padding: 8px 10px; border-radius: 3px; cursor: pointer;
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    }
+    #search-results li:hover { background: #f0f0f0; }
+    .result-main { flex: 1; min-width: 0; }
+    .result-name { font-weight: 600; font-size: 13px; }
+    .result-meta { font-size: 11px; color: #888; }
+    .result-badge {
+      font-size: 11px; padding: 2px 6px; border-radius: 10px;
+      background: #d4f0d4; color: #2d5a2d; white-space: nowrap;
+    }
+    .depth-row { display: flex; gap: 6px; align-items: center; margin: 16px 0 8px; }
+    .depth-row button {
+      padding: 5px 10px; font-size: 12px; cursor: pointer;
+      background: #fff; border: 1px solid #ccc; border-radius: 3px;
+    }
+    .depth-row button.active { background: #333; color: #fff; border-color: #333; }
+    .warning-text {
+      font-size: 12px; color: #555; line-height: 1.4;
+      background: #fffbe6; border: 1px solid #ffe58f;
+      border-radius: 3px; padding: 8px 10px;
+    }
+    .error-text {
+      font-size: 12px; color: #b3261e; padding: 8px 10px;
+      background: #fff5f5; border: 1px solid #f5c6cb;
+      border-radius: 3px;
+    }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+    .modal-actions button {
+      padding: 6px 14px; font-size: 12px; cursor: pointer;
+      background: #fff; border: 1px solid #ccc; border-radius: 3px;
+    }
+    .modal-actions button.primary { background: #333; color: #fff; border-color: #333; }
+    .modal-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+    #selected-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+    #selected-meta { font-size: 11px; color: #888; margin-bottom: 4px; }
+    #progress-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+    #progress-detail { font-size: 12px; color: #555; margin-bottom: 12px; min-height: 18px; }
+    .spinner {
+      width: 22px; height: 22px;
+      border: 3px solid #eee; border-top-color: #333; border-radius: 50%;
+      animation: spin 0.8s linear infinite; margin: 8px auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
@@ -49,6 +121,7 @@
     <div class="group">
       <span class="label">Scene:</span>
       <select id="scene-select"></select>
+      <button id="add-band-btn" title="Build a network for a single band">+ Build new</button>
     </div>
     <div class="group">
       <span class="label">View:</span>
@@ -65,6 +138,43 @@
   </div>
   <div class="tooltip" id="tooltip"></div>
   <svg></svg>
+
+  <div id="build-modal" class="hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="modal-title">Build a band-network</h2>
+        <button id="modal-close" class="icon-btn" aria-label="Close">×</button>
+      </div>
+      <div id="modal-search-stage">
+        <input id="search-input" type="text" placeholder="Search MusicBrainz for a band…" autocomplete="off"/>
+        <ul id="search-results"></ul>
+      </div>
+      <div id="modal-config-stage" class="hidden">
+        <div id="selected-name"></div>
+        <div id="selected-meta"></div>
+        <div class="depth-row">
+          <span class="label">Depth:</span>
+          <button data-depth="1" class="active">1</button>
+          <button data-depth="2">2</button>
+        </div>
+        <div id="depth-warning" class="warning-text"></div>
+        <div class="modal-actions">
+          <button id="back-to-search">← Back</button>
+          <button id="build-btn" class="primary">Build</button>
+        </div>
+      </div>
+      <div id="modal-progress-stage" class="hidden">
+        <div id="progress-title"></div>
+        <div id="progress-detail"></div>
+        <div id="progress-spinner" class="spinner"></div>
+        <div id="progress-error" class="error-text hidden"></div>
+        <div class="modal-actions">
+          <button id="progress-close">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <script>
     const width = window.innerWidth;
@@ -160,6 +270,203 @@
       setupScales();
       render();
     }
+
+    // ---- Build modal: search MusicBrainz, kick off a single-band crawl ----
+    let buildState = { selected: null, depth: 1, jobId: null, pollTimer: null };
+    let searchTimeout = null;
+
+    function openBuildModal() {
+      buildState = { selected: null, depth: 1, jobId: null, pollTimer: null };
+      d3.select("#search-input").property("value", "");
+      d3.select("#search-results").selectAll("*").remove();
+      showStage("search");
+      d3.select("#build-modal").classed("hidden", false);
+      setTimeout(() => document.getElementById("search-input").focus(), 0);
+    }
+
+    function closeBuildModal() {
+      if (buildState.pollTimer) {
+        clearTimeout(buildState.pollTimer);
+        buildState.pollTimer = null;
+      }
+      d3.select("#build-modal").classed("hidden", true);
+    }
+
+    function showStage(name) {
+      for (const s of ["search", "config", "progress"]) {
+        d3.select(`#modal-${s}-stage`).classed("hidden", s !== name);
+      }
+    }
+
+    function onSearchInput(value) {
+      clearTimeout(searchTimeout);
+      const q = value.trim();
+      if (q.length < 2) {
+        d3.select("#search-results").selectAll("*").remove();
+        return;
+      }
+      searchTimeout = setTimeout(() => doSearch(q), 300);
+    }
+
+    async function doSearch(q) {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=8`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderSearchResults(data.results || []);
+      } catch (err) {
+        const list = d3.select("#search-results");
+        list.selectAll("*").remove();
+        list.append("li").attr("class", "error-text").text(`Search failed: ${err.message}`);
+      }
+    }
+
+    function renderSearchResults(results) {
+      const list = d3.select("#search-results");
+      list.selectAll("*").remove();
+      if (!results.length) {
+        list.append("li").style("color", "#888").style("padding", "8px 10px").text("No matches.");
+        return;
+      }
+      for (const r of results) {
+        const existing = SCENES.find(s => s.kind === "single-band" && s.mbid === r.mbid);
+        const li = list.append("li").on("click", () => onResultClick(r, existing));
+        const main = li.append("div").attr("class", "result-main");
+        main.append("div").attr("class", "result-name").text(r.name);
+        const metaParts = [r.type, r.country, r.disambiguation].filter(Boolean);
+        if (metaParts.length) {
+          main.append("div").attr("class", "result-meta").text(metaParts.join(" · "));
+        }
+        if (existing) {
+          li.append("span").attr("class", "result-badge")
+            .text(`✓ already built (depth ${existing.depth ?? "?"})`);
+        }
+      }
+    }
+
+    async function onResultClick(result, existing) {
+      if (existing) {
+        closeBuildModal();
+        await loadScene(existing.id);
+        return;
+      }
+      buildState.selected = result;
+      d3.select("#selected-name").text(result.name);
+      const metaParts = [result.type, result.country, result.disambiguation].filter(Boolean);
+      d3.select("#selected-meta").text(metaParts.join(" · "));
+      setDepth(1);
+      showStage("config");
+    }
+
+    function setDepth(d) {
+      buildState.depth = d;
+      d3.selectAll('.depth-row button[data-depth]').classed("active", function () {
+        return Number(this.dataset.depth) === d;
+      });
+      const warning = d === 2
+        ? "Depth 2 also expands those second-tier bands and their members. Can take several minutes, much longer for prolific artists. Re-runs are faster (cached)."
+        : "Depth 1 covers the seed band, every other band each of its members ever played in, and the connecting musicians. Typically under a minute; longer for prolific artists.";
+      d3.select("#depth-warning").text(warning);
+    }
+
+    async function startBuild() {
+      if (!buildState.selected) return;
+      showStage("progress");
+      d3.select("#progress-title").text(`Building network for ${buildState.selected.name} (depth ${buildState.depth})…`);
+      d3.select("#progress-detail").text("Queued.");
+      d3.select("#progress-error").classed("hidden", true).text("");
+      d3.select("#progress-spinner").classed("hidden", false);
+      d3.select("#progress-close").text("Cancel");
+
+      try {
+        const res = await fetch("/api/build", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: buildState.selected.name,
+            mbid: buildState.selected.mbid,
+            depth: buildState.depth,
+          }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (data.status === "exists") {
+          await refreshScenes();
+          closeBuildModal();
+          await loadScene(data.scene_id);
+          return;
+        }
+        buildState.jobId = data.job_id;
+        pollBuild();
+      } catch (err) {
+        showBuildError(`Failed to start build: ${err.message}`);
+      }
+    }
+
+    async function pollBuild() {
+      if (!buildState.jobId) return;
+      try {
+        const res = await fetch(`/api/build/${buildState.jobId}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const job = await res.json();
+        if (job.state === "done") {
+          d3.select("#progress-detail").text("Done!");
+          d3.select("#progress-spinner").classed("hidden", true);
+          await refreshScenes();
+          closeBuildModal();
+          await loadScene(job.scene_id);
+          return;
+        }
+        if (job.state === "error") {
+          showBuildError(job.error || "Unknown error");
+          return;
+        }
+        if (job.progress) {
+          const p = job.progress;
+          d3.select("#progress-detail").text(
+            `Processing: ${p.current} (depth ${p.depth}) — ${p.bands_done} bands, ${p.musicians_done} musicians so far`
+          );
+        } else {
+          d3.select("#progress-detail").text(job.state === "running" ? "Starting…" : "Queued.");
+        }
+        buildState.pollTimer = setTimeout(pollBuild, 1000);
+      } catch (err) {
+        showBuildError(`Lost connection: ${err.message}`);
+      }
+    }
+
+    function showBuildError(msg) {
+      d3.select("#progress-error").classed("hidden", false).text(msg);
+      d3.select("#progress-spinner").classed("hidden", true);
+      d3.select("#progress-close").text("Close");
+    }
+
+    async function refreshScenes() {
+      try {
+        const res = await fetch("/api/scenes");
+        SCENES = (await res.json()).scenes || [];
+        populateSceneDropdown();
+        if (currentSceneId) d3.select("#scene-select").property("value", currentSceneId);
+      } catch (err) {
+        console.error("refresh scenes failed", err);
+      }
+    }
+
+    d3.select("#add-band-btn").on("click", openBuildModal);
+    d3.select("#modal-close").on("click", closeBuildModal);
+    d3.select(".modal-backdrop").on("click", closeBuildModal);
+    d3.select("#search-input").on("input", function () { onSearchInput(this.value); });
+    d3.select("#back-to-search").on("click", () => showStage("search"));
+    d3.selectAll('.depth-row button[data-depth]').on("click", function () {
+      setDepth(Number(this.dataset.depth));
+    });
+    d3.select("#build-btn").on("click", startBuild);
+    d3.select("#progress-close").on("click", closeBuildModal);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !document.getElementById("build-modal").classList.contains("hidden")) {
+        closeBuildModal();
+      }
+    });
 
     init();
 
