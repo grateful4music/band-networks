@@ -118,10 +118,13 @@ def _members_of(artist_data: dict) -> list[tuple[str, str, str]]:
 
 
 def _bands_of(artist_data: dict) -> list[tuple[str, str]]:
-    """Return (band_id, band_name) tuples — bands this musician was a member of."""
+    """Return (band_id, band_name) tuples — bands this musician was a member of
+    or supporting musician for. Mirrors the relationship types `_members_of`
+    accepts, so a musician's bands list stays symmetric with each band's
+    members list."""
     out = []
     for rel in artist_data.get("artist-relation-list", []):
-        if rel.get("type", "").lower() not in ("member of band", "member"):
+        if rel.get("type", "").lower() not in ("member of band", "member", "supporting musician"):
             continue
         artist = rel.get("artist") or {}
         if artist.get("id"):
