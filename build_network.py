@@ -50,7 +50,11 @@ def find_existing_by_mbid(mbid: str) -> dict | None:
     """Return the meta of a previously-built single-band scene matching mbid, or None."""
     if not DATA_DIR.exists():
         return None
-    for scene_dir in DATA_DIR.iterdir():
+    try:
+        entries = list(DATA_DIR.iterdir())
+    except PermissionError:
+        return None
+    for scene_dir in entries:
         meta_path = scene_dir / "meta.json"
         if not meta_path.exists():
             continue
