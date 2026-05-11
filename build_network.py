@@ -150,7 +150,41 @@ def build(
     edges: list[dict] = []
     seen_edges: set[tuple[str, str, str]] = set()
 
-    queue: deque[tuple[str, str, int]] = deque((mbid, name, 0) for name, mbid in seeds)
+    # A Person seed (e.g. Bob Dylan) is added as a musician; the bands they
+    # belong to become the actual BFS seeds. Without this, the BFS would treat
+    # the person as a band and their bands as members, inverting the bipartite
+    # graph's roles.
+    band_seeds: list[tuple[str, str]] = []
+    for seed_name, seed_mbid in seeds:
+        result = _cached_get_artist(seed_mbid)
+        if not result:
+            continue
+        artist_data = result["artist"]
+        if artist_data.get("type", "").lower() != "person":
+            band_seeds.append((seed_name, seed_mbid))
+            continue
+        musicians.setdefault(seed_mbid, artist_data.get("name", seed_name))
+        for rel in artist_data.get("artist-relation-list", []):
+            rel_type = rel.get("type", "").lower()
+            if rel_type in ("member of band", "member"):
+                role = "member"
+            elif rel_type == "supporting musician":
+                role = "supporting"
+            else:
+                continue
+            band = rel.get("artist") or {}
+            band_id = band.get("id")
+            if not band_id:
+                continue
+            band_name = band.get("name", "Unknown")
+            bands.setdefault(band_id, band_name)
+            edge_key = (seed_mbid, band_id, role)
+            if edge_key not in seen_edges:
+                seen_edges.add(edge_key)
+                edges.append({"source": seed_mbid, "target": band_id, "role": role})
+            band_seeds.append((band_name, band_id))
+
+    queue: deque[tuple[str, str, int]] = deque((mbid, name, 0) for name, mbid in band_seeds)
     processed_bands: set[str] = set()
 
     while queue:
@@ -219,13 +253,15 @@ def write_scene(scene_name: str, graph: dict, meta: dict | None = None) -> Path:
     return out_path
 
 
-def build_single_band(
+def build_single_artist(
     name: str,
     mbid: str,
     depth: int = 1,
     progress: Callable[[dict], None] | None = None,
 ) -> dict:
-    """Build a single-band scene and write data/<slug>/{network,meta}.json.
+    """Build a single-artist scene and write data/<slug>/{network,meta}.json.
+
+    Seed may be a band or a person — `build()` handles the dispatch.
 
     If a scene with this MBID already exists, returns its meta unchanged.
     Otherwise crawls and writes new files. Returns the scene's meta dict.
@@ -275,7 +311,7 @@ def main():
         top = candidates[0]
         depth = args.depth if args.depth is not None else 1
         print(f"Building single-band scene from {top['name']} ({top['mbid']}), depth {depth}")
-        meta = build_single_band(top["name"], top["mbid"], depth=depth)
+        meta = build_single_artist(top["name"], top["mbid"], depth=depth)
         scene_id = meta["id"]
         out_path = DATA_DIR / scene_id / "network.json"
         stats = meta["stats"]

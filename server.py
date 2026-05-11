@@ -32,7 +32,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from build_network import build_single_band, find_existing_by_mbid, search_artist
+from build_network import build_single_artist, find_existing_by_mbid, search_artist
 from fetch_popularity import fetch_popularity_for_scene
 
 ROOT = Path(__file__).parent
@@ -176,7 +176,7 @@ def _run_build_job(job_id: str, name: str, mbid: str, depth: int) -> None:
             JOBS[job_id]["state"] = "running"
             JOBS[job_id]["phase"] = "musicbrainz"
             JOBS[job_id]["started_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        meta = build_single_band(name, mbid, depth=depth, progress=mb_progress)
+        meta = build_single_artist(name, mbid, depth=depth, progress=mb_progress)
         scene_id = meta["id"]
 
         # Phase 2: fetch popularity if a Last.fm key is configured.
