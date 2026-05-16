@@ -56,13 +56,13 @@ def find_existing_by_mbid(mbid: str) -> dict | None:
         return None
     for scene_dir in entries:
         meta_path = scene_dir / "meta.json"
-        if not meta_path.exists():
+        if not meta_path.exists() or not (scene_dir / "network.json").exists():
             continue
         try:
             meta = json.loads(meta_path.read_text())
         except json.JSONDecodeError:
             continue
-        if meta.get("kind") == "single-band" and meta.get("mbid") == mbid:
+        if meta.get("kind") == "single-artist" and meta.get("mbid") == mbid:
             return meta
     return None
 
@@ -216,10 +216,15 @@ def build(
                         queue.append((new_band_id, new_band_name, depth + 1))
 
         if progress:
+            # Total is bands processed + unique bands still queued. The queue
+            # grows as BFS discovers new bands, so `total` ratchets up over
+            # time but the bar always reflects honest progress.
+            pending = {item[0] for item in queue} - processed_bands
             progress({
                 "current": band_name,
                 "depth": depth,
-                "bands_done": len(bands),
+                "bands_done": len(processed_bands),
+                "total": len(processed_bands) + len(pending),
                 "musicians_done": len(musicians),
             })
 
@@ -284,7 +289,7 @@ def build_single_artist(
     meta = {
         "id": scene_id,
         "name": name,
-        "kind": "single-band",
+        "kind": "single-artist",
         "mbid": mbid,
         "depth": depth,
         "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),

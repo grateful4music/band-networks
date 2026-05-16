@@ -107,14 +107,28 @@
     .modal-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
     #selected-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
     #selected-meta { font-size: 11px; color: #888; margin-bottom: 4px; }
-    #progress-title { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
-    #progress-detail { font-size: 12px; color: #555; margin-bottom: 12px; min-height: 18px; }
-    .spinner {
-      width: 22px; height: 22px;
-      border: 3px solid #eee; border-top-color: #333; border-radius: 50%;
-      animation: spin 0.8s linear infinite; margin: 8px auto;
+    #progress-title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+    .progress-section { margin: 14px 0; }
+    .progress-section.idle .progress-label-name { color: #aaa; }
+    .progress-section.idle .progress-fill { background: #ccc; }
+    .progress-label {
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 12px; margin-bottom: 4px;
     }
-    @keyframes spin { to { transform: rotate(360deg); } }
+    .progress-label-name { color: #333; font-weight: 600; }
+    .progress-label-count { color: #888; font-variant-numeric: tabular-nums; }
+    .progress-bar {
+      height: 8px; background: #eee; border-radius: 4px; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; background: #333; width: 0%;
+      transition: width 0.3s ease, background-color 0.3s ease;
+    }
+    .progress-fill.complete { background: #2d5a2d; }
+    .progress-current {
+      font-size: 11px; color: #888; margin-top: 4px;
+      min-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
     .hidden { display: none !important; }
   </style>
 </head>
@@ -170,8 +184,25 @@
       </div>
       <div id="modal-progress-stage" class="hidden">
         <div id="progress-title"></div>
-        <div id="progress-detail"></div>
-        <div id="progress-spinner" class="spinner"></div>
+
+        <div class="progress-section idle" id="mb-section">
+          <div class="progress-label">
+            <span class="progress-label-name">MusicBrainz crawl</span>
+            <span class="progress-label-count" id="mb-count">—</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" id="mb-fill"></div></div>
+          <div class="progress-current" id="mb-current">Waiting…</div>
+        </div>
+
+        <div class="progress-section idle hidden" id="lf-section">
+          <div class="progress-label">
+            <span class="progress-label-name">Last.fm popularity</span>
+            <span class="progress-label-count" id="lf-count">—</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" id="lf-fill"></div></div>
+          <div class="progress-current" id="lf-current">Waiting…</div>
+        </div>
+
         <div id="progress-error" class="error-text hidden"></div>
         <div class="modal-actions">
           <button id="progress-close">Cancel</button>
@@ -269,9 +300,12 @@
         document.title = `${meta.name} · band-networks`;
       }
 
+      // Cache-bust by built_at so the browser doesn't reuse a stale network.json
+      // from a previous build of the same scene id.
+      const v = meta?.built_at ? `?v=${encodeURIComponent(meta.built_at)}` : "";
       const [data, pop] = await Promise.all([
-        d3.json(`data/${sceneId}/network.json`),
-        d3.json(`data/${sceneId}/popularity.json`).catch(() => null),
+        d3.json(`data/${sceneId}/network.json${v}`),
+        d3.json(`data/${sceneId}/popularity.json${v}`).catch(() => null),
       ]);
       // Guard against rapid switches: if a newer scene is now active, drop these results.
       if (currentSceneId !== sceneId) return;
@@ -358,7 +392,7 @@
         return;
       }
       for (const r of results) {
-        const existing = SCENES.find(s => s.kind === "single-band" && s.mbid === r.mbid);
+        const existing = SCENES.find(s => s.kind === "single-artist" && s.mbid === r.mbid);
         const li = list.append("li").on("click", () => onResultClick(r, existing));
         const main = li.append("div").attr("class", "result-main");
         main.append("div").attr("class", "result-name").text(r.name);
@@ -398,13 +432,34 @@
       d3.select("#depth-warning").text(warning);
     }
 
+    function resetProgressBars() {
+      const lfVisible = CONFIG.lastfm_enabled;
+      d3.select("#mb-section").classed("idle", true);
+      d3.select("#mb-fill").classed("complete", false).style("width", "0%");
+      d3.select("#mb-count").text("—");
+      d3.select("#mb-current").text("Waiting…");
+      d3.select("#lf-section").classed("hidden", !lfVisible).classed("idle", true);
+      d3.select("#lf-fill").classed("complete", false).style("width", "0%");
+      d3.select("#lf-count").text("—");
+      d3.select("#lf-current").text(lfVisible ? "Waiting…" : "");
+    }
+
+    function setBar(prefix, { done, total, current, complete }) {
+      const pct = complete ? 100 : (total > 0 ? Math.min(100, (done / total) * 100) : 0);
+      d3.select(`#${prefix}-section`).classed("idle", false);
+      d3.select(`#${prefix}-fill`)
+        .classed("complete", !!complete)
+        .style("width", `${pct}%`);
+      d3.select(`#${prefix}-count`).text(complete ? `${done}/${done}` : `${done}/${total}`);
+      if (current !== undefined) d3.select(`#${prefix}-current`).text(current);
+    }
+
     async function startBuild() {
       if (!buildState.selected) return;
       showStage("progress");
       d3.select("#progress-title").text(`Building network for ${buildState.selected.name} (depth ${buildState.depth})…`);
-      d3.select("#progress-detail").text("Queued.");
       d3.select("#progress-error").classed("hidden", true).text("");
-      d3.select("#progress-spinner").classed("hidden", false);
+      resetProgressBars();
       d3.select("#progress-close").text("Cancel");
 
       try {
@@ -442,8 +497,6 @@
         const job = await res.json();
         if (myJobId !== buildState.jobId) return;  // re-check after second await
         if (job.state === "done") {
-          d3.select("#progress-detail").text("Done!");
-          d3.select("#progress-spinner").classed("hidden", true);
           if (job.popularity_warning) {
             console.warn("Popularity fetch warning:", job.popularity_warning);
           }
@@ -457,17 +510,20 @@
           showBuildError(job.error || "Unknown error");
           return;
         }
-        if (job.progress) {
-          const p = job.progress;
-          let detail;
-          if (job.phase === "lastfm") {
-            detail = `Last.fm popularity: ${p.current} (${p.done}/${p.total})`;
-          } else {
-            detail = `MusicBrainz: ${p.current} (depth ${p.depth}) — ${p.bands_done} bands, ${p.musicians_done} musicians so far`;
+        const p = job.progress || {};
+        if (job.phase === "lastfm") {
+          // MB phase finished; mark it complete (last MB progress isn't echoed
+          // back during LF phase, so we just snap it to 100%).
+          setBar("mb", { done: 1, total: 1, complete: true, current: "Done" });
+          d3.select("#lf-section").classed("hidden", false);
+          if (p.total !== undefined) {
+            setBar("lf", { done: p.done || 0, total: p.total || 0, current: p.current || "" });
           }
-          d3.select("#progress-detail").text(detail);
+        } else if (job.phase === "musicbrainz" && p.total !== undefined) {
+          const detail = `${p.current} (depth ${p.depth}) — ${p.musicians_done} musicians`;
+          setBar("mb", { done: p.bands_done, total: p.total, current: detail });
         } else {
-          d3.select("#progress-detail").text(job.state === "running" ? "Starting…" : "Queued.");
+          d3.select("#mb-current").text(job.state === "running" ? "Starting…" : "Queued.");
         }
         buildState.pollTimer = setTimeout(pollBuild, 1000);
       } catch (err) {
@@ -478,7 +534,6 @@
 
     function showBuildError(msg) {
       d3.select("#progress-error").classed("hidden", false).text(msg);
-      d3.select("#progress-spinner").classed("hidden", true);
       d3.select("#progress-close").text("Close");
     }
 
